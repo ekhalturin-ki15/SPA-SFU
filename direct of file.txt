@@ -1,0 +1,6 @@
+2
+plans/grad
+plans/spec
+result/grad
+result/spec
+Create_folder=true
