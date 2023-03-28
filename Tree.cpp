@@ -306,14 +306,23 @@ public:
 	void LineParser(string line, string name, sGlobal::Subject& s)
 	{
 		string nameIndex = "";
-		int dop = 0;
-		for (auto it : name) if (it == ',') ++dop;
+		//int dop = 0;
+		//for (auto it : name) if (it == ',') ++dop;
 
-		for (int i = 0; i < shiftColumn + dop; ++i)
+		bool bError = false;
+		for (int i = 0; i < shiftColumn; ++i)
 		{
-			while (line.find("\"")< line.find(",")) line = line.substr(line.find(",") + 1);
 
-
+			while (line.find("\"") < line.find(","))
+			{
+				line = line.substr(line.find(",") + 1);
+				bError = true;
+			}
+			if (bError)
+			{
+				line = "Error," + line;
+				bError = false;
+			}
 			if (i == shiftNumberSession) keyNumberSession = line.substr(0, line.find(",")); //Экзамен
 			if (i == shiftNumberSession + 1) keyNumberSession += line.substr(0, line.find(",")); //Зачёт
 			if (i == shiftNumberSession + 2) keyNumberSession += line.substr(0, line.find(",")); //Зачёт с оц.
