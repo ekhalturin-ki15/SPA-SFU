@@ -12,6 +12,31 @@ typedef const string& crstring;
 
 ofstream logFile("DebugFile.txt");
 
+map<char, char> translit =
+{
+	{'А' , 'A'},
+	{'Б' , 'B'},
+	{'В' , 'V'},
+	{'Г' , 'G'},
+	{'Д' , 'D'},
+	{'Е' , 'E'},
+	{'Ж' , 'J'},
+	{'И' , 'I'},
+	{'К' , 'K'},
+	{'Л' , 'L'},
+	{'М' , 'M'},
+	{'Н' , 'N'},
+	{'О' , 'O'},
+	{'П' , 'P'},
+	{'Р' , 'R'},
+	{'С' , 'S'},
+	{'Т' , 'T'},
+	{'У' , 'U'},
+	{'Ф' , 'F'},
+	{'Х' , 'H'},
+	{'Ю' , 'U'}
+};
+
 /// <summary>
 /// Структура, которая реализует обход по дисциплинам, 
 /// с вложением по модулям (дисциплина по выбору, факультатив, т.д.)
@@ -20,6 +45,7 @@ struct tree
 {
 	int zi;
 	string name;
+	string subject_name;
 	vector<tree*> tr;
 	tree* prt;
 
@@ -305,15 +331,30 @@ public:
 	void LineParser(string line, string name, sGlobal::Subject& s)
 	{
 		string nameIndex = "";
-		int dop = 0;
-		for (auto it : name) if (it == ',') ++dop;
+		//int dop = 0;
+		//for (auto it : name) if (it == ',') ++dop;
 
-		for (int i = 0; i < shiftColumn + dop; ++i)
+		bool bError = false;
+		for (int i = 0; i < shiftColumn; ++i)
 		{
-			if (i == shiftNumberSession) keyNumberSession = line.substr(0, line.find(","));
-			if (i == shiftNumberSession + 1) keyNumberSession += line.substr(0, line.find(","));
+
+			while (line.find("\"") < line.find(","))
+			{
+				line = line.substr(line.find(",") + 1);
+				bError = true;
+			}
+			if (bError)
+			{
+				line = "Error," + line;
+				bError = false;
+			}
+			if (i == shiftNumberSession) keyNumberSession = line.substr(0, line.find(",")); //Экзамен
+			if (i == shiftNumberSession + 1) keyNumberSession += line.substr(0, line.find(",")); //Зачёт
+			if (i == shiftNumberSession + 2) keyNumberSession += line.substr(0, line.find(",")); //Зачёт с оц.
 			if (i == shiftColumnkeyIndex) nameIndex = line.substr(0, line.find(","));
 			line = line.substr(line.find(",") + 1);
+
+
 		}
 		line = line.substr(0, line.find(","));
 
@@ -326,6 +367,8 @@ public:
 		int z = atoi(line.c_str());
 
 		//Построение дерева дисциплин (может быть вложенность из-за модулей)
+		
+		 
 		while (true)
 		{
 			if ((th->prt == nullptr) || (n.find(th->name) == 0))
@@ -333,22 +376,33 @@ public:
 				//Это дисциплина по выбору?
 				if (th->prt) //Да, так как есть общее название модуля
 				{
-					Global->dictory.erase(name);
+					if (bErase)
+					{
+						Global->dictory.erase(name);
+					}
+					else
+					{
+						s.VU = th->zi;
+						s.score = th->zi;// *Statist::PREC;
+						//Statist::mid += s.score;
+					}
+					bErase = true;
 				}
 				else
 				{
-					if (name != "")
-					{
-						//logFile << name << " = " << atoi(line.c_str()) << "\n";
-						s.VU = atoi(line.c_str());
-						s.score = atoi(line.c_str());// *Statist::PREC;
-						Statist::mid += s.score;
-					}
+					bErase = false;
+					//logFile << name << " = " << atoi(line.c_str()) << "\n";
+					s.VU = z;
+					s.score = z;// *Statist::PREC;
+					//Statist::mid += s.score;
+					
 				}
 
 				tree* newa = new tree;
 				newa->zi = z;
 				newa->name = n;
+				newa->subject_name = name;
+				
 				th->tr.push_back(newa); // Запоминаем сына
 				newa->prt = th;
 				th = newa;
@@ -419,10 +473,25 @@ public:
 		while (getline(in, buf))
 			WhatComp(buf);
 
+		for (auto it : root->tr)
+		{
+			if (it->tr.size() > 1)
+			{
+				Global->dictory.erase(it->subject_name);
+				it->subject_name = it->tr[0]->subject_name;
+			}
+			
+		}
+
+		for (auto it : Global->dictory)
+			Statist::mid += it.second.VU;
+
+
 		Normalizm();
 	}
 
 private:
+	bool bErase = false;
 	string keyWord;
 	string keyIndex; string keyIndexPhrase;
 	int shiftColumn;
@@ -461,7 +530,7 @@ public:
 			j = 0;
 			for (auto et : Global->dictory)
 			{
-				if (i != j)
+				if (i < j)
 				{
 					double range = 0;
 					for (auto sub : it.second.Comp)
@@ -536,7 +605,9 @@ public:
 		{
 			for (int j = 0; j < AL[i].size(); ++j)
 			{
-				out << OutRib(i, AL[i][j].first, AL[i][j].second) << "\n";
+				if (i < AL[i][j].first)
+					out << OutRib(i, AL[i][j].first, AL[i][j].second) << "\n";
+
 				/*out << i << "," <<
 					AL[i][j].first << "," <<
 					"Undirected,,,,," << AL[i][j].second << "\n";*/
@@ -556,16 +627,17 @@ public:
 		
 	}
 
-	//Вывод общих сведений про учебный планы
+	//Вывод общих сведений про учебный план
 	void OutCompWeight(string fileName)
 	{
 		ofstream out(fileName + Category::PlanName+"CompWeight.csv");
 
 		out << "Comp,Weight\n";
 
-		map<string, int> CW;
-		int sum_all_comp = 0;
+		map<string, float> CW; map<int, map<string, float>> CW_course;
+		int sum_all_comp = 0; map<int, float> sum_all_comp_course;
 		int sum_VU = 0;
+		int sum_VU_2 = 0;
 
 		for (auto it : root->tr)
 			sum_VU += it->zi;
@@ -574,13 +646,23 @@ public:
 		{
 			for (auto et : it.second.Comp)
 			{
-				CW[et] += it.second.VU;
-				sum_all_comp += it.second.VU;
+				CW[et] += it.second.VU / float(it.second.Comp.size());
+			}
+			sum_all_comp += it.second.VU;
+
+			for (auto st : it.second.Session)
+			{
+				for (auto et : it.second.Comp)
+				{
+					CW_course[(st - 1) / 2 + 1][et] += it.second.VU / (float(it.second.Session.size()) * float(it.second.Comp.size()));
+				}
+				sum_all_comp_course[(st - 1) / 2 + 1] += it.second.VU/ float(it.second.Session.size());
+
 			}
 		}
 
 		//Префикс компетенции хранит CW, но перевернутый
-		map < string, vector<pair<int, string>>> AutoSort;
+		map < string, vector<pair<float, string>>> AutoSort;
 		for (auto it : CW)
 		{
 			string name = it.first;
@@ -603,21 +685,27 @@ public:
 
 		for (auto et : AutoSort)
 		{
-			int local_sum = 0;
-			out << et.first;
+			float local_sum = 0;
+
+
+			for (auto ch : et.first)
+				out << (translit.count(ch)?translit[ch]:ch);
+
 			for (auto it : et.second)
 			{
 				local_sum += it.first;
-				out << "," << it.second;
-				out << "," << it.first;
-				out << "," << it.first * 100 / double(sum_all_comp) << "%";
+				out << ";"; 
+				for (auto ch : it.second)
+					out << (translit.count(ch) ? translit[ch] : ch);
+				out << ";" << it.first;
+				out << ";" << it.first * 100 / double(sum_all_comp) << "%";
 				if (it != *(--et.second.end())) out << "\n";
 			}
-			out << "," << local_sum;
+			out << ";" << local_sum;
 			double result = local_sum * 100 / double(sum_all_comp);
 
 			statistic.percent[et.first] = result; Category::CompetentionVarible.insert(et.first);
-			out << "," << result << "%\n";
+			out << ";" << result << "%\n";
 
 			if (!Category::max_procent.count(et.first))
 			{
@@ -638,17 +726,64 @@ public:
 		statistic.employ = Global->dictory.size();
 		statistic.employ_whitout_repeat = root->tr.size();
 
-		//if (Category::min_sum_VU > sum_VU) Category::min_sum_VU = sum_VU;
-		//if (Category::max_sum_VU < sum_VU) Category::max_sum_VU = sum_VU;
+		out << "Количество зачётных единиц на все предметы;" << sum_VU << "\n";
+		out << "Количество зачётных единиц учтённых предметы;" << sum_all_comp << "\n";
 
-		out << "Количество зачётных единиц на все предметы," << sum_VU << "\n";
-
-		//if (Category::min_employ > Global->dictory.size()) Category::min_employ = Global->dictory.size();
-		//if (Category::max_employ < Global->dictory.size()) Category::max_employ = Global->dictory.size();
-
-		out << "Количество дисциплин," << root->tr.size() << "\n";
-
+		out << "Количество дисциплин;" << root->tr.size() << "\n";
+		out << "Количество учтённых дисциплин;" << Global->dictory.size() << "\n";
 		Category::AllStatistic.push_back(statistic);
+
+		//А теперь распределение по курсам -----------------------------
+		for (auto [course, what] : CW_course)
+		{
+			ofstream out_course(fileName + Category::PlanName + "CompWeight_" + to_string(course)+".csv");
+
+			//Префикс компетенции хранит CW, но перевернутый
+			map < string, vector<pair<float, string>>> AutoSort_course;
+			for (auto it : CW_course[course])
+			{
+				string name = it.first;
+				int pdef = 0;
+				for (int i = 0; i < name.size(); ++i)
+					if (name[i] == '-')
+					{
+						pdef = i;
+						break;
+					}
+
+				name = name.substr(0, pdef);
+
+				AutoSort_course[name].push_back({ it.second, it.first });
+			}
+			for (auto& it : AutoSort_course)
+				sort(it.second.begin(), it.second.end(), greater<pair<int, string>>());
+
+			for (auto et : AutoSort_course)
+			{
+				float local_sum = 0;
+		
+				for (auto ch : et.first)
+					out_course << (translit.count(ch) ? translit[ch] : ch);
+
+				for (auto it : et.second)
+				{
+					local_sum += it.first;
+					out_course << ";";
+					for (auto ch : it.second)
+						out_course << (translit.count(ch) ? translit[ch] : ch);
+					out_course << ";" << it.first;
+					out_course << ";" << it.first * 100 / double(sum_all_comp_course[course]) << "%";
+					if (it != *(--et.second.end())) out_course << "\n";
+				}
+				out_course << ";" << local_sum;
+				double result = local_sum * 100 / double(sum_all_comp_course[course]);
+
+				out_course << ";" << result << "%\n";
+
+
+			}
+
+		}
 	}
 
 	//Вывод рёбер и вершин для графа, в котором дисциплина разбивается по семестрам
@@ -656,6 +791,7 @@ public:
 	void OutWithCourse(string fileName)
 	{
 		ofstream outL(fileName + Category::PlanName + "LabelCourse.csv");
+		ofstream out(fileName + Category::PlanName + "RibCourse.csv");
 
 		ifstream open("bad parser prefix.txt");
 
@@ -666,55 +802,41 @@ public:
 		getline(open, s);
 		outL << s << "\n";
 
-		int i = 0; for (auto& [l, r] : Global->dictory)
-		{
-			r.id = i; // Выдаём индексы для простоты
-			int j = 0; for (auto et : r.Session)
-			{
-				outL << i* Statist::MAX_Course + j << "," 
-					<< OutAlise(l) + "_" + to_string(et) << "\n";
-				++j;
-			}
-			++i;
-		}
-
-
-		ofstream out(fileName + Category::PlanName + "RibCourse.csv");
 		open.close(); open.open("bad parser prefix.txt");
 		while (getline(open, s))
 			if (isFind(s, "HeaderRib")) break;
 		getline(open, s);
 		out << s << "\n";
 
+		int i = 0;
+		for (auto& [l, r] : Global->dictory)
+		{
+			r.id = i++;
+			int preSession = -2;
+			for (auto et : r.Session)
+			{
+				outL << r.id * Statist::MAX_Course + et << ","
+					<< OutAlise(l) + "_" + to_string(et) << "\n";
+				if (preSession == et - 1) //Связь между одной и той же дисциплинной, но в разном семестре
+				{
+					double range = 0;
+					range = LinaryTransform(r.score / r.Session.size(), 0, 1);
+					out << OutRib(r.id * Statist::MAX_Course + et, r.id * Statist::MAX_Course + et - 1, range) << "\n";
+				}
+				preSession = et;
+			}
 
-		vector <sGlobal::Subject*> pr, now;
+		}
+
+		vector <sGlobal::Subject*> now;
 		for (int i = 1; i <= Statist::MAX_Course; ++i)
 		{
+			now.clear();
 			for (auto& [l, r] : Global->dictory)
 			{
 				if (r.Session.count(i))
 					now.push_back(&r);
 			}
-
-			for (auto it : pr)
-			{
-				int flag = 0;
-				for (auto et : now)
-				{
-					if (et == it)
-					{
-						flag = 1;
-						break;
-					}
-				}
-				if (flag)
-				{
-					out << OutRib(it->id * Statist::MAX_Course + i, it->id * Statist::MAX_Course + i - 1, 1) <<"\n"; // Связь между семестрами
-				}
-			}
-			
-			pr = now;
-
 			for (auto& et : now)
 			{
 				for (auto& zt : now)
